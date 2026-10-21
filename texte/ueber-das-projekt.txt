@@ -1,0 +1,23 @@
+﻿Über das PYTHA-Schulmaterial
+
+Das PYTHA-Schulmaterial ist eine Schulbibliothek für PYTHA mit zugehöriger Transferdatei. Entwickelt wurde es von
+
+  • Clemens Kastner (Gewerbliche Schule Schwäbisch Hall)
+  • Theo Weber (Gewerbliche Schule Ravensburg)
+  • Ralf Sigmund (Berufsschulzentrum Radolfzell)
+  • Ralf Huber (Gewerblich-Technische Schule Offenburg)
+
+im Rahmen der Professionellen Lerngruppe. Seit 2023 wird es gemeinsam gepflegt und fortlaufend erweitert.
+
+Alle Bibliothekselemente stützen sich auf die gemeinsame Transferdatei als technische Grundlage.
+
+
+Was dieses Programm tut
+
+  • Es lädt das Schulmaterial aus einer Cloud nach C:\Users\Public\PYTHA\Schulmaterial – später nur noch Neues und Geändertes.
+  • Eigene Dateien im Ordner werden nie gelöscht. Ein eigenes Schullogo wird nie überschrieben.
+  • Auf Wunsch (mit Administratorrechten): PYTHA 26 installieren, die Schuleinstellungen (Transferdatei) eintragen und eine tägliche Aktualisierung einrichten.
+  • Es werden keine persönlichen Daten erhoben oder übertragen. Abgerufen werden nur die Dateien aus der Cloud und die PYTHA-Installationsdatei von pytha.de.
+  • Alles lässt sich über „Apps“ in den Windows-Einstellungen wieder entfernen.
+
+Für den Betrieb von PYTHA ist eine gültige PYTHA-Lizenz erforderlich. PYTHA ist ein Produkt der PYTHA Lab GmbH; dieses Programm ist kein Angebot der PYTHA Lab GmbH.
