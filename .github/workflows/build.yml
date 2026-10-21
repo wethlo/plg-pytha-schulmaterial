@@ -105,3 +105,17 @@ jobs:
         run: |
           $quelle = 'ausgabe\PLG-PYTHA-Schulmaterial-Setup.exe'
           if (Test-Path 'ausgabe-signiert\PLG-PYTHA-Schulmaterial-Setup.exe') { $quelle = 'ausgabe-signiert\PLG-PYTHA-Schulmaterial-Setup.exe' }
+          New-Item -ItemType Directory release -Force | Out-Null
+          Copy-Item $quelle release\
+          $hash = (Get-FileHash release\PLG-PYTHA-Schulmaterial-Setup.exe -Algorithm SHA256).Hash
+          "$hash  PLG-PYTHA-Schulmaterial-Setup.exe" | Set-Content release\SHA256.txt -Encoding ASCII
+          Write-Host "Release aus: $quelle"
+
+      - name: GitHub-Release anlegen
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          name: PLG PYTHA-Schulmaterial ${{ steps.version.outputs.nummer }}
+          files: |
+            release/PLG-PYTHA-Schulmaterial-Setup.exe
+            release/SHA256.txt
