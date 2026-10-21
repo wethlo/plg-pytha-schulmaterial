@@ -1,0 +1,107 @@
+# Baut den Installer auf GitHub (Windows) und laesst ihn - sobald das
+# Projekt bei der SignPath Foundation freigeschaltet ist - signieren.
+#
+# Ausloeser:
+#   - jeder Push / Pull Request  -> Test-Build (unsigniert, als Artefakt)
+#   - Tag "v*" (z. B. v3.0.0)     -> Build, Signatur, GitHub-Release
+#
+# Fuer die Signatur unter Settings > Secrets and variables > Actions eintragen:
+#   Secret    SIGNPATH_API_TOKEN          (API-Token des CI-Benutzers bei SignPath)
+#   Variable  SIGNPATH_ORGANIZATION_ID    (Organisations-ID bei SignPath)
+#   Variable  SIGNPATH_PROJECT_SLUG       (Standard: plg-pytha-schulmaterial)
+#   Variable  SIGNPATH_SIGNING_POLICY     (Standard: release-signing)
+# Ohne Token wird einfach nicht signiert.
+
+name: Installer bauen
+
+on:
+  push:
+    branches: [ main ]
+    tags: [ 'v*' ]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  bauen:
+    runs-on: windows-latest
+    env:
+      SIGNPATH_API_TOKEN: ${{ secrets.SIGNPATH_API_TOKEN }}
+
+    steps:
+      - name: Quellen holen
+        uses: actions/checkout@v4
+
+      - name: Version bestimmen
+        id: version
+        shell: pwsh
+        run: |
+          $v = '3.0.0'
+          if ($env:GITHUB_REF -like 'refs/tags/v*') { $v = $env:GITHUB_REF_NAME.Substring(1) }
+          "nummer=$v" >> $env:GITHUB_OUTPUT
+          Write-Host "Version: $v"
+
+      - name: PowerShell-Skripte pruefen (Syntax)
+        shell: powershell
+        run: |
+          $fehler = 0
+          foreach ($datei in Get-ChildItem src\*.ps1) {
+            $tokens = $null; $probleme = $null
+            [void][System.Management.Automation.Language.Parser]::ParseFile($datei.FullName, [ref]$tokens, [ref]$probleme)
+            if ($probleme) { $probleme | ForEach-Object { Write-Host "$($datei.Name): $($_.Message)" }; $fehler++ }
+            else { Write-Host "OK  $($datei.Name)" }
+          }
+          if ($fehler) { exit 1 }
+
+      - name: Inno Setup bereitstellen
+        shell: pwsh
+        run: |
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path $iscc)) { choco install innosetup -y --no-progress }
+          if (-not (Test-Path $iscc)) { throw 'ISCC.exe nicht gefunden' }
+          "ISCC=$iscc" >> $env:GITHUB_ENV
+
+      - name: Installer bauen
+        shell: pwsh
+        run: |
+          & $env:ISCC "/DAppVersion=${{ steps.version.outputs.nummer }}" installer\PLG-Schulmaterial.iss
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          Get-ChildItem ausgabe
+
+      - name: Unsignierten Installer hochladen
+        id: unsigniert
+        uses: actions/upload-artifact@v4
+        with:
+          name: installer-unsigniert
+          path: ausgabe/PLG-PYTHA-Schulmaterial-Setup.exe
+          if-no-files-found: error
+
+      - name: Bei SignPath signieren lassen
+        if: env.SIGNPATH_API_TOKEN != '' && github.event_name != 'pull_request'
+        uses: signpath/github-action-submit-signing-request@v1
+        with:
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
+          project-slug: ${{ vars.SIGNPATH_PROJECT_SLUG || 'plg-pytha-schulmaterial' }}
+          signing-policy-slug: ${{ vars.SIGNPATH_SIGNING_POLICY || 'release-signing' }}
+          artifact-configuration-slug: initial
+          github-artifact-id: ${{ steps.unsigniert.outputs.artifact-id }}
+          wait-for-completion: true
+          output-artifact-directory: ausgabe-signiert
+
+      - name: Signierten Installer hochladen
+        if: env.SIGNPATH_API_TOKEN != '' && github.event_name != 'pull_request'
+        uses: actions/upload-artifact@v4
+        with:
+          name: installer-signiert
+          path: ausgabe-signiert/PLG-PYTHA-Schulmaterial-Setup.exe
+          if-no-files-found: error
+
+      - name: Release-Datei auswaehlen
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: pwsh
+        run: |
+          $quelle = 'ausgabe\PLG-PYTHA-Schulmaterial-Setup.exe'
+          if (Test-Path 'ausgabe-signiert\PLG-PYTHA-Schulmaterial-Setup.exe') { $quelle = 'ausgabe-signiert\PLG-PYTHA-Schulmaterial-Setup.exe' }
