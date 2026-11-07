@@ -4,7 +4,8 @@ param(
     [switch]$Manuell,           # von Hand ueber die Desktop-Verknuepfung
     [switch]$Entfernen,         # vom Deinstaller: Aufgabe entfernen
     [switch]$EntferneRegistry,  # zusammen mit -Entfernen: Schuleinstellungen austragen
-    [string]$ErgebnisDatei = '' # vom Installer: hier landet eine kurze Zusammenfassung
+    [string]$ErgebnisDatei = '', # vom Installer: hier landet eine kurze Zusammenfassung
+    [string]$FortschrittDatei = '' # vom Installer: laufender Fortschritt fuer den Balken
 )
 
 # ==============================================================
@@ -585,6 +586,15 @@ function Balken-Moeglich {
 
 function Zeichne-Balken {
     param([switch]$Erzwingen)
+    if ($FortschrittDatei) {
+        $a = 0.0
+        if ($script:GesamtBytes -gt 0) { $a = $script:GeladeneBytes / $script:GesamtBytes }
+        elseif ($script:DateiAnzahl -gt 0) { $a = $script:DateiNummer / $script:DateiAnzahl }
+        if ($a -gt 1) { $a = 1 }
+        if ($a -lt 0) { $a = 0 }
+        if ($script:Phase -eq 'setup') { $proz = 80 + [int]($a * 10) } else { $proz = 6 + [int]($a * 74) }
+        Melde-Fortschritt -Phase $script:Phase -Prozent $proz -Werte @([string]$script:DateiNummer, [string]$script:DateiAnzahl, (Formatiere-Bytes $script:GeladeneBytes), (Formatiere-Bytes $script:GesamtBytes)) -Erzwingen:$Erzwingen
+    }
     if (-not (Balken-Moeglich)) { return }
     if ($null -eq $script:Uhr) { return }
 
@@ -1056,6 +1066,24 @@ function Merke-Ergebnis {
     $script:InstallErgebnis[$Schluessel] = $Wert
 }
 
+# Fortschritt fuer den Installer: eine Zeile "Phase|Prozent|Wert1|Wert2|..."
+# Der Installer zeigt daraus Balken und Text an (deutsche Texte dort).
+$script:LetzteMeldung = -1000
+$script:MeldeUhr = [Diagnostics.Stopwatch]::StartNew()
+$script:Phase = 'laden'
+function Melde-Fortschritt {
+    param([string]$Phase, [int]$Prozent, [string[]]$Werte = @(), [switch]$Erzwingen)
+    if (-not $FortschrittDatei) { return }
+    $jetzt = $script:MeldeUhr.ElapsedMilliseconds
+    if (-not $Erzwingen -and ($jetzt - $script:LetzteMeldung) -lt 300) { return }
+    $script:LetzteMeldung = $jetzt
+    if ($Prozent -lt 0) { $Prozent = 0 }
+    if ($Prozent -gt 100) { $Prozent = 100 }
+    $zeile = $Phase + '|' + $Prozent
+    foreach ($w in $Werte) { $zeile += '|' + (([string]$w) -replace '[\|\r\n]', ' ') }
+    try { [IO.File]::WriteAllText($FortschrittDatei, $zeile, [Text.Encoding]::ASCII) } catch { }
+}
+
 function Schreibe-Ergebnis {
     if (-not $ErgebnisDatei) { return }
     try {
@@ -1240,6 +1268,7 @@ try {
     )
 
     Zeige-Meldung 'Verbinde mit der Cloud und lese die Dateiliste ...' $script:Farbe.Leise
+    Melde-Fortschritt -Phase 'liste' -Prozent 2 -Erzwingen
 
     $dateien = $null
     $ordnerAusFreigabe = @()
@@ -1291,6 +1320,7 @@ try {
     foreach ($d in $dateien) {
         $geprueft++
         Zeige-Status ("Vergleiche mit dem Ordner auf diesem PC ...   {0} von {1}" -f $geprueft, $dateien.Count)
+        Melde-Fortschritt -Phase 'vergleich' -Prozent (3 + [int](3 * $geprueft / [Math]::Max(1, $dateien.Count))) -Werte @([string]$geprueft, [string]$dateien.Count)
         $relKlein = ([string]$d.Rel).Replace('\', '/').Trim('/').ToLowerInvariant()
         if ($geschuetztSet.ContainsKey($relKlein)) {
             $script:Geschuetzt++
@@ -1323,6 +1353,8 @@ try {
     }
 
     $script:Uhr = [Diagnostics.Stopwatch]::StartNew()
+    $script:Phase = 'laden'
+    if ($plan.Count -eq 0) { Melde-Fortschritt -Phase 'aktuell' -Prozent 80 -Erzwingen }
     foreach ($p in $plan) {
         $d = $p.Datei
         $script:DateiNummer++
@@ -1355,6 +1387,8 @@ try {
     if ($SetupHolen -and $SetupUrl) {
         Write-Host ''
         Zeige-Meldung 'PYTHA-Installationsdatei:' $script:Farbe.Leise
+        $script:Phase = 'setup'
+        Melde-Fortschritt -Phase 'setupcheck' -Prozent 80 -Erzwingen
         try {
             Hole-Installationsdatei -Client $client -Url $SetupUrl -Ordner (Join-Path $ZielOrdner $SetupOrdner)
         } catch {
@@ -1404,6 +1438,7 @@ try {
         Write-Host ''
 
         # 1. Schuleinstellungen
+        Melde-Fortschritt -Phase 'registry' -Prozent 92 -Erzwingen
         if ([string]$einst.Registry -eq '1') {
             if (-not $istAdmin) {
                 Merke-Ergebnis 'Registry' 'keine-adminrechte'
@@ -1429,6 +1464,7 @@ try {
         }
 
         # 2. Taegliche Aktualisierung
+        Melde-Fortschritt -Phase 'automatik' -Prozent 95 -Erzwingen
         if ([string]$einst.Automatik -eq '1') {
             if (-not $istAdmin) {
                 Merke-Ergebnis 'Automatik' 'keine-adminrechte'
@@ -1442,6 +1478,7 @@ try {
         }
 
         # 3. PYTHA installieren
+        Melde-Fortschritt -Phase 'pythacheck' -Prozent 97 -Erzwingen
         if ([string]$einst.PythaInstallieren -eq '1') {
             if (-not $istAdmin) {
                 Merke-Ergebnis 'Pytha' 'keine-adminrechte'
@@ -1459,6 +1496,7 @@ try {
                     Zeige-Meldung 'Dieses Fenster bitte so lange offen lassen.' $script:Farbe.Leise
                     try {
                         Schreib ('SETUP      starte ' + $setupPfad) 'Gray' -NurProtokoll
+                        Melde-Fortschritt -Phase 'pytha' -Prozent 97 -Erzwingen
                         $lauf = Start-Process -FilePath $setupPfad -Wait -PassThru
                         Schreib ('SETUP      beendet, Code ' + $lauf.ExitCode) 'Gray' -NurProtokoll
                         # manche Installationsprogramme ueberschreiben die Werte - noch einmal setzen
@@ -1493,10 +1531,11 @@ try {
     Write-Host ''
     if ($script:LogPfad) { Write-Host ("   Protokoll: " + $script:LogPfad) -ForegroundColor $script:Farbe.Leise }
 } finally {
+    Melde-Fortschritt -Phase 'fertig' -Prozent 100 -Erzwingen
     Schreibe-Ergebnis
 }
 
-if ($Einrichten) {
+if ($Einrichten -and -not $FortschrittDatei) {
     Write-Host ''
     Write-Host '   Weiter geht es im Installationsfenster ...' -ForegroundColor $script:Farbe.Leise
     Start-Sleep -Seconds 3
