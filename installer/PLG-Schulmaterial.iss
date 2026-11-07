@@ -46,9 +46,11 @@ SetupIconFile=..\assets\PLG.ico
 UninstallDisplayIcon={app}\PLG.ico
 UninstallDisplayName={#AppName}
 WizardStyle=modern
-WizardImageFile=..\assets\wizard-gross.bmp,..\assets\wizard-gross-200.bmp
-WizardSmallImageFile=..\assets\wizard-klein.bmp,..\assets\wizard-klein-200.bmp
-WizardImageStretch=no
+; je Bildschirm-Skalierung (100/125/150/175/200 %) ein passendes Bild
+WizardImageFile=..\assets\wizard-gross.bmp,..\assets\wizard-gross-125.bmp,..\assets\wizard-gross-150.bmp,..\assets\wizard-gross-175.bmp,..\assets\wizard-gross-200.bmp
+WizardSmallImageFile=..\assets\wizard-klein.bmp,..\assets\wizard-klein-125.bmp,..\assets\wizard-klein-150.bmp,..\assets\wizard-klein-175.bmp,..\assets\wizard-klein-200.bmp
+; bei Zwischengroessen einpassen statt abschneiden
+WizardImageStretch=yes
 InfoBeforeFile=..\texte\ueber-das-projekt.txt
 ShowLanguageDialog=no
 Compression=lzma2
