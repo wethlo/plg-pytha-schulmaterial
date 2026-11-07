@@ -532,7 +532,7 @@ begin
   S := S + NewLine + Space + 'Desktop-Verknüpfung: ' + JaNein(KompSeite.Values[4]) + NewLine;
   if not IsAdminInstallMode then
     S := S + NewLine + 'Hinweis: Ohne Adminrechte entfallen PYTHA-Installation,' + NewLine + Space + 'Schuleinstellungen und tägliche Aktualisierung.' + NewLine;
-  S := S + NewLine + 'Beim Installieren öffnet sich ein Fenster, das den Download zeigt.';
+  S := S + NewLine + 'Beim Installieren wird das Schulmaterial geladen – der Fortschritt wird angezeigt.';
   Result := S;
 end;
 
@@ -585,6 +585,108 @@ begin
   Result := Result + #13#10;
 end;
 
+{ ---------- Aktualisieren unsichtbar starten, Fortschritt im Installer zeigen ---------- }
+{ Das Skript schreibt laufend eine Zeile "Phase|Prozent|Wert1|Wert2|..." in eine Datei. }
+function Feld(const Zeile: String; Nr: Integer): String;
+var
+  Rest: String;
+  P, I: Integer;
+begin
+  Result := '';
+  Rest := Zeile;
+  for I := 0 to Nr do
+  begin
+    P := Pos('|', Rest);
+    if P = 0 then
+    begin
+      if I = Nr then Result := Rest;
+      Exit;
+    end;
+    if I = Nr then
+    begin
+      Result := Copy(Rest, 1, P - 1);
+      Exit;
+    end;
+    Rest := Copy(Rest, P + 1, Length(Rest));
+  end;
+end;
+
+function FortschrittText(const Zeile: String): String;
+var
+  Phase: String;
+begin
+  Phase := Feld(Zeile, 0);
+  if Phase = 'liste' then Result := 'Verbinde mit der Cloud und lese die Dateiliste …'
+  else if Phase = 'vergleich' then Result := 'Vergleiche mit dem Ordner auf diesem PC … (' + Feld(Zeile, 2) + ' von ' + Feld(Zeile, 3) + ')'
+  else if Phase = 'laden' then Result := 'Lade Schulmaterial: Datei ' + Feld(Zeile, 2) + ' von ' + Feld(Zeile, 3) + '  (' + Feld(Zeile, 4) + ' von ' + Feld(Zeile, 5) + ')'
+  else if Phase = 'aktuell' then Result := 'Das Schulmaterial ist bereits auf dem aktuellen Stand.'
+  else if Phase = 'setupcheck' then Result := 'Prüfe die PYTHA-Installationsdatei …'
+  else if Phase = 'setup' then Result := 'Lade die PYTHA-Installationsdatei  (' + Feld(Zeile, 4) + ' von ' + Feld(Zeile, 5) + ')'
+  else if Phase = 'registry' then Result := 'Trage die Schuleinstellungen ein …'
+  else if Phase = 'automatik' then Result := 'Richte die tägliche Aktualisierung ein …'
+  else if Phase = 'pythacheck' then Result := 'Prüfe, ob PYTHA 26 installiert ist …'
+  else if Phase = 'pytha' then Result := 'PYTHA 26 wird installiert – bitte im PYTHA-Setup weiterklicken.'
+  else if Phase = 'fertig' then Result := 'Fertig.'
+  else Result := 'Bitte warten …';
+end;
+
+procedure LaufeMitFortschritt(const Erg: String);
+var
+  Seite: TOutputProgressWizardPage;
+  Datei, Zeile, Letzte, Text: String;
+  Roh: AnsiString;
+  Code, Ruhe, Proz: Integer;
+begin
+  Datei := ExpandConstant('{tmp}\fortschritt.txt');
+  DeleteFile(Datei);
+  Seite := CreateOutputProgressPage('Schulmaterial wird eingerichtet',
+    'Das Schulmaterial wird aus der Cloud geladen. Das kann beim ersten Mal einige Minuten dauern.');
+  Seite.SetText('Starte …', '');
+  Seite.SetProgress(0, 100);
+  Seite.Show;
+  try
+    if not Exec(PowerShell, '-NoProfile -ExecutionPolicy Bypass -File "' + ExpandConstant('{app}\Schulmaterial-Update.ps1') +
+                '" -Einrichten -ErgebnisDatei "' + Erg + '" -FortschrittDatei "' + Datei + '"',
+                ExpandConstant('{app}'), SW_HIDE, ewNoWait, Code) then
+    begin
+      Log('Aktualisieren konnte nicht gestartet werden: ' + SysErrorMessage(Code));
+      Exit;
+    end;
+    Letzte := '';
+    Text := 'Starte …';
+    Proz := 0;
+    Ruhe := 0;
+    while not FileExists(Erg) do
+    begin
+      Sleep(250);
+      Zeile := '';
+      if LoadStringFromFile(Datei, Roh) then Zeile := Trim(String(Roh));
+      if (Zeile <> '') and (Zeile <> Letzte) then
+      begin
+        Letzte := Zeile;
+        Ruhe := 0;
+        Text := FortschrittText(Zeile);
+        Proz := StrToIntDef(Feld(Zeile, 1), Proz);
+      end else
+        Ruhe := Ruhe + 1;
+      Seite.SetProgress(Proz, 100);
+      Seite.SetText(Text, IntToStr(Proz) + ' %');
+      { 20 Minuten ohne jedes Lebenszeichen: nicht ewig warten
+        (ausser waehrend das PYTHA-Setup laeuft - das dauert, solange der Benutzer will) }
+      if (Ruhe > 20 * 60 * 4) and (Feld(Letzte, 0) <> 'pytha') then
+      begin
+        Log('Aktualisieren: kein Lebenszeichen mehr - Warten beendet.');
+        Break;
+      end;
+    end;
+    Sleep(500);
+    Seite.SetProgress(100, 100);
+    Seite.SetText('Fertig.', '100 %');
+  finally
+    Seite.Hide;
+  end;
+end;
+
 procedure CurStepChanged(CurStep: TSetupStep);
 var
   Code: Integer;
@@ -604,12 +706,9 @@ begin
       MsgBox('Das Logo konnte nicht nach ' + LogoZiel + ' kopiert werden.', mbError, MB_OK);
   end;
 
-  WizardForm.StatusLabel.Caption := 'Das Schulmaterial wird aus der Cloud geladen – siehe eigenes Fenster …';
   Erg := ExpandConstant('{tmp}\ergebnis.txt');
   DeleteFile(Erg);
-  { ueber cmd.exe: aeussere Anfuehrungszeichen werden von /c entfernt }
-  Exec(ExpandConstant('{cmd}'), '/c ""' + ExpandConstant('{app}\Aktualisieren.cmd') + '" -Einrichten -ErgebnisDatei "' + Erg + '""',
-       ExpandConstant('{app}'), SW_SHOWNORMAL, ewWaitUntilTerminated, Code);
+  LaufeMitFortschritt(Erg);
 
   ErgebnisText := '';
   if LoadStringsFromFile(Erg, Zeilen) then
@@ -625,7 +724,7 @@ begin
     ErgebnisText := ErgebnisText + Beschreibe('Tägliche Aktualisierung', Wert(Zeilen, 'Automatik'));
     ErgebnisText := ErgebnisText + Beschreibe('PYTHA 26', Wert(Zeilen, 'Pytha'));
   end else
-    ErgebnisText := '• Das Ergebnis des Downloads ist unbekannt (Fenster vorzeitig geschlossen?).' + #13#10;
+    ErgebnisText := '• Das Ergebnis des Downloads ist unbekannt – bitte über „PYTHA-Schulmaterial aktualisieren“ erneut starten.' + #13#10;
 end;
 
 procedure CurPageChanged(CurPageID: Integer);
