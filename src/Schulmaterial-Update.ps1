@@ -912,20 +912,47 @@ function Bin-Ich-Admin {
 # PYTHA: Schuleinstellungen setzen und bei Bedarf installieren
 # --------------------------------------------------------------
 
-# Ist PYTHA 26 bereits installiert? Gesucht wird in der Deinstallations-
-# Liste von Windows (beide Registrierungs-Sichten) und zusaetzlich am
-# Programmschluessel von PYTHA.
 # Ist PYTHA 26 wirklich installiert?
-# Geprueft wird NUR die Windows-Deinstallationsliste - die wird beim
-# Deinstallieren sauber entfernt. Der Schluessel "PYTHA Lab GmbH\PYTHA26.0"
-# wird BEWUSST NICHT geprueft: Er bleibt nach einer Deinstallation haeufig
-# als Rest zurueck und wuerde faelschlich "installiert" melden.
-# Zusaetzlich wird geprueft, ob der Programmordner noch existiert.
+# Frueher reichte "PYTHA" und "26" irgendwo im Namen. Das traf auch
+# Zusatzpakete wie "PYTHA Texturen 26.2025..." oder "PYTHA Materialien 26..."
+# und meldete faelschlich "installiert", obwohl nur PYTHA 25 da war.
+# Jetzt muessen ALLE Merkmale passen:
+#   1. Name genau "PYTHA 26" oder "PYTHA 26.<Build>" (keine Zusatzpakete)
+#   2. Herausgeber "PYTHA Lab GmbH"
+#   3. Versionsnummer beginnt mit "26."
+#   4. Programmordner (InstallLocation bzw. Programme\PYTHA26.0) existiert
+#      und enthaelt eine .exe - ein leerer Rest-Ordner zaehlt nicht
+# Im Zweifel gilt PYTHA 26 als NICHT installiert: Dann startet das Setup,
+# das eine vorhandene Installation selbst erkennt (harmlos). Faelschlich
+# ueberspringen waere dagegen nicht harmlos.
+# Der Schluessel "PYTHA Lab GmbH\PYTHA26.0" wird bewusst nicht geprueft
+# (bleibt nach Deinstallationen oft stehen).
+function Ist-Pytha26-Eintrag {
+    param([string]$Name, [string]$Version, [string]$Herausgeber)
+    if (-not $Name) { return $false }
+    if ($Name.Trim() -notmatch '^(?i)PYTHA\s+26(\.\d+)*$') { return $false }
+    if ($Herausgeber -and ($Herausgeber -notmatch '(?i)PYTHA\s+Lab')) { return $false }
+    if ($Version -and ($Version.Trim() -notmatch '^26\.')) { return $false }
+    return $true
+}
+
+function Ordner-Mit-Programm {
+    param([string]$Ordner)
+    try {
+        if (-not $Ordner) { return $false }
+        $Ordner = $Ordner.Trim().Trim('"').TrimEnd('\')
+        if (-not (Test-Path -LiteralPath $Ordner -PathType Container)) { return $false }
+        $exe = @(Get-ChildItem -LiteralPath $Ordner -Filter '*.exe' -File -Recurse -Depth 1 -ErrorAction SilentlyContinue)
+        return ($exe.Count -gt 0)
+    } catch { return $false }
+}
+
 function Pytha26-Installiert {
     $orte = @(
         'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall',
         'HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall'
     )
+    $standardOrdner = Join-Path $env:ProgramFiles 'PYTHA26.0'
     foreach ($ort in $orte) {
         try {
             if (-not (Test-Path -LiteralPath $ort)) { continue }
@@ -934,20 +961,18 @@ function Pytha26-Installiert {
                 try { $daten = Get-ItemProperty -LiteralPath $eintrag.PSPath -ErrorAction SilentlyContinue } catch { }
                 if (-not $daten) { continue }
                 $name = [string]$daten.DisplayName
-                if (-not $name) { continue }
-                if (-not ($name -match '(?i)PYTHA' -and $name -match '26')) { continue }
-
-                # Gegenprobe: Ist der Programmordner noch da? Sonst ist das
-                # ein Ueberbleibsel einer unsauberen Deinstallation.
-                $ordner = [string]$daten.InstallLocation
-                if ($ordner) {
-                    $ordner = $ordner.Trim('"').TrimEnd('\')
-                    if (-not (Test-Path -LiteralPath $ordner)) {
-                        Schreib ('PRUEFUNG   Ueberbleibsel ignoriert (Ordner fehlt): ' + $name) 'Gray' -NurProtokoll
-                        continue
-                    }
+                if (-not ($name -match '(?i)PYTHA')) { continue }
+                if (-not (Ist-Pytha26-Eintrag $name ([string]$daten.DisplayVersion) ([string]$daten.Publisher))) {
+                    Schreib ('PRUEFUNG   kein PYTHA 26: ' + $name + ' (' + [string]$daten.DisplayVersion + ')') 'Gray' -NurProtokoll
+                    continue
                 }
-                Schreib ('PRUEFUNG   installiert erkannt: ' + $name) 'Gray' -NurProtokoll
+                $ordner = [string]$daten.InstallLocation
+                if (-not (Ordner-Mit-Programm $ordner)) { $ordner = $standardOrdner }
+                if (-not (Ordner-Mit-Programm $ordner)) {
+                    Schreib ('PRUEFUNG   Eintrag ohne Programmordner ignoriert: ' + $name) 'Gray' -NurProtokoll
+                    continue
+                }
+                Schreib ('PRUEFUNG   installiert erkannt: ' + $name + ' (' + [string]$daten.DisplayVersion + ') in ' + $ordner) 'Gray' -NurProtokoll
                 return $true
             }
         } catch { }
