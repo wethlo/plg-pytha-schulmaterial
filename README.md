@@ -18,6 +18,12 @@ im Rahmen der Professionellen Lerngruppe. Seit 2023 pflegen wir es gemeinsam und
 
 PYTHA ist ein Produkt der PYTHA Lab GmbH. Dieses Projekt ist kein Angebot der PYTHA Lab GmbH. Für den Betrieb von PYTHA ist eine gültige PYTHA-Lizenz erforderlich.
 
+## Download und Anleitung
+
+- **Installer:** [neueste Version unter „Releases“](https://github.com/wethlo/plg-pytha-schulmaterial/releases/latest) → `PLG-PYTHA-Schulmaterial-Setup.exe`
+- **Bebilderte Anleitung (PDF, 3 Seiten):** [Anleitung-PYTHA-Schulmaterial-installieren.pdf](Anleitung-PYTHA-Schulmaterial-installieren.pdf)
+
+
 ## Was der Installer macht
 
 | | Ohne Adminrechte | Mit Adminrechten |
@@ -28,7 +34,7 @@ PYTHA ist ein Produkt der PYTHA Lab GmbH. Dieses Projekt ist kein Angebot der PY
 | Schuleinstellungen eintragen (Transferdatei-Pfad, Lesemodus 0/1/2) | – | ✔ |
 | Tägliche Aktualisierung (Uhrzeit wählbar, auch bei Anmeldung) für alle Benutzer | – | ✔ |
 
-- **Start per Doppelklick:** Windows fragt nach Adminrechten. Mit **Ja** gibt es die volle Installation. Mit **Nein** läuft der Installer ohne Adminrechte weiter, die Admin-Punkte sind dann ausgegraut.
+- **Start per Doppelklick:** Ein kleines Fenster fragt „Mit oder ohne Adminrechte installieren?“. **Mit Adminrechten** fragt danach Windows nach der Bestätigung, und alles kann eingerichtet werden. **Ohne Adminrechte** werden nur Schulmaterial und Verknüpfung eingerichtet, die übrigen Punkte sind ausgegraut.
 - **Schulauswahl:** Ravensburg, Offenburg, Radolfzell, Schwäbisch Hall, Emmendingen oder **Andere Schule**.
 - **Andere Schule:** Ein eigenes Logo ist Pflicht (JPG, PNG, BMP, GIF oder TIFF). Es wird im Assistenten auf 472 × 115 Pixel zugeschnitten (zoomen und verschieben) und als `13_Material\Logos\Logo.jpg` gespeichert. Aktualisierungen überschreiben diese Datei nie.
 - **Aktualisieren:** Es werden nur neue und geänderte Dateien geladen. Eigene Dateien im Ordner werden nie gelöscht.
